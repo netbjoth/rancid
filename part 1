@@ -1,0 +1,89 @@
+#Installation 
+yum install wget ftp telnet mariadb-server mariadb perl tcl expect gcc cvs rcs httpd autoconf php-common php-gd php-pear php-pecl-memcache php-mysql php-xml mod_ssl MySQL-python cyrus-sasl-plain 
+  
+groupadd backup 
+useradd -g backup -c "Device Backups" -d /home/rancid rancid 
+mkdir /home/rancid/tar 
+
+#Download Rancid
+wget https://shrubbery.net/pub/rancid/rancid-3.13.tar.gz 
+
+#Extract and install
+tar -xzvf rancid-3.13.tar.gz  
+./configure --prefix=/usr/local/rancid 
+make && make install 
+
+cp cloginrc.sample /home/rancid/.cloginrc  
+chmod 0640 /home/rancid/.cloginrc 
+chown -R rancid:backup /home/rancid/.cloginrc 
+chown -R rancid:backup /usr/local/rancid/ 
+chmod 775 /usr/local/rancid/ 
+
+#Config file  
+vi /usr/local/rancid/etc/rancid.conf 
+  
+LIST_OF_GROUPS="Routers Switches Firewalls" 
+ 
+#Create and initialize locations 
+/usr/local/rancid/bin/rancid-cvs 
+
+#Viewvc installation
+wget https://viewvc.org/downloads/viewvc-1.2.1.tar.gz  
+tar -xzvf viewvc-1.2.1.tar.gz 
+./viewvc-install 
+vi /usr/local/viewvc-1.2.1/viewvc.conf 
+
+
+#Lines to add 
+root_parents = /usr/local/rancid/var/CVS : cvs 
+rcs_dir = /usr/local/bin 
+use_rcsparse = 1 
+  
+cp /usr/local/viewvc-1.2.1/bin/cgi/*.cgi /var/www/cgi-bin/ 
+chmod +x /var/www/cgi-bin/*.cgi 
+chown apache:apache /var/www/cgi-bin/*.cgi 
+
+#Apache settings
+vi /etc/httpd/conf/httpd.conf 
+  
+<VirtualHost  10.64.128.238:80> 
+    DocumentRoot /var/www 
+    ScriptAlias /cgi-bin/ "/var/www/cgi-bin" 
+    ScriptAlias /viewvc /var/www/cgi-bin/viewvc.cgi 
+    ScriptAlias /query /var/www/cgi-bin/query.cgi 
+<Directory "/var/www/cgi-bin"> 
+    AllowOverride None 
+    Options None 
+    Order allow,deny 
+    Allow from all 
+</Directory> 
+</VirtualHost>
+
+systemctl enable httpd
+systemctl start httpd
+ 
+#Firewall rules 
+firewall-cmd --permanent --zone=public --add-service=http 
+firewall-cmd --permanent --zone=public --add-service=https 
+firewall-cmd --reload 
+  
+#DB installation 
+  
+systemctl enable mariadb 
+systemctl start mariadb 
+mysql_secure_installation 
+  
+mysql -u root -p 
+CREATE USER 'viewvc'@'localhost' IDENTIFIED BY 'securepass'; 
+GRANT ALL PRIVILEGES ON *.* TO 'viewvc'@'localhost' WITH GRANT OPTION; 
+FLUSH PRIVILEGES; 
+  
+cd /usr/local/viewvc-1.2.1/bin/ 
+./make-database 
+  
+mysql -u root -p 
+CREATE USER 'viewvcro'@'localhost' IDENTIFIED BY 'anothersecpass'; 
+GRANT SELECT ON ViewVC.* TO 'viewvcro'@'localhost' WITH GRANT OPTION; 
+FLUSH PRIVILEGES; 
+
+/usr/local/viewvc-1.2.1/bin/cvsdbadmin rebuild /usr/local/rancid/var/CVS/CVSROOT/
