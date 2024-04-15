@@ -1,0 +1,91 @@
+#LDAP integration package
+yum install mod_ldap
+
+#Add a certificate
+openssl req -new -newkey rsa:2048 -days 720 -nodes -x509 -keyout /etc/pki/CA/ca.key -out /etc/pki/CA/certs/cert.crt
+cat /etc/pki/CA/certs/cert.crt
+openssl x509 -in /etc/pki/CA/certs/cert.crt -text -noout
+
+#SELinux
+getsebool -a | grep ldap
+
+authlogin_nsswitch_use_ldap --> off
+dhcpd_use_ldap --> off
+httpd_can_connect_ldap --> of
+
+setsebool -P httpd_can_connect_ldap 1
+
+getsebool -a | grep ldap
+authlogin_nsswitch_use_ldap --> off
+dhcpd_use_ldap --> off
+httpd_can_connect_ldap --> on
+
+#SSL setup
+/etc/httpd/conf.d/ssl.conf
+
+SSLCertificateFile      /etc/pki/CA/certs/cert.crt
+SSLCertificateKeyFile   /etc/pki/CA/ca.key
+
+LDAPTrustedMode SSL
+LDAPVerifyServerCert Off
+#SSLOptions +StdEnvVars
+
+<VirtualHost _default_:443>
+
+DocumentRoot "/var/www"
+ScriptAlias /cgi-bin/ "/var/www/cgi-bin"
+ScriptAlias /viewvc /var/www/cgi-bin/viewvc.cgi
+ScriptAlias /query /var/www/cgi-bin/query.cgi
+ServerName rc2.tvs.local:443
+<Directory "/var/www/cgi-bin">
+    AllowOverride None
+    Options None
+    Order allow,deny
+    Allow from all
+    AuthType Basic
+    AuthName "Authenticate"
+    AuthBasicProvider ldap
+    AuthLDAPBindAuthoritative off
+    AuthLDAPURL "ldaps://tvs.local:636/dc=tvs,dc=local?sAMAccountName?sub?(objectClass=user)"
+    AuthLDAPBindDN "rancid@tvs.local"
+    AuthLDAPBindPassword "Backup&9"
+    AuthLDAPSubGroupAttribute member
+    AuthLDAPSubGroupClass group
+    <RequireAny>
+      Require ldap-group CN=NOC,OU=IT,DC=tvs,DC=local
+      Require ip 10.64.128.0/24
+    </RequireAny>
+    Loglevel ldap_module:debug
+    Loglevel authnz_ldap_module:debug
+</Directory>
+
+<VirtualHost  10.64.128.238:80>
+    DocumentRoot /var/www
+    ScriptAlias /cgi-bin/ "/var/www/cgi-bin"
+    ScriptAlias /viewvc /var/www/cgi-bin/viewvc.cgi
+    ScriptAlias /query /var/www/cgi-bin/query.cgi
+<Directory "/var/www/cgi-bin">
+    AllowOverride None
+    Options None
+    Order allow,deny
+    Allow from all
+</Directory>
+</VirtualHost>
+
+#After
+<VirtualHost 10.64.128.238:80>
+    DocumentRoot /var/www
+    ScriptAlias /cgi-bin/ "/var/www/cgi-bin"
+    ScriptAlias /viewvc /var/www/cgi-bin/viewvc.cgi
+    ScriptAlias /query /var/www/cgi-bin/query.cgi
+    RewriteEngine on
+    RewriteRule "^/?(.*)"  "https://%{HTTP_HOST}/viewvc" [R=301]
+</VirtualHost>
+
+#Troubleshooting
+tail -f /var/log/httpd/ssl_error_log
+
+<Directory "/var/www/cgi-bin">
+    Loglevel ldap_module:debug
+    Loglevel authnz_ldap_module:debug
+</Directory>
