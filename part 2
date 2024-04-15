@@ -1,0 +1,74 @@
+#Adding router 
+vi /usr/local/rancid/var 
+10.64.128.130;cisco;up 
+vi /home/rancid/.cloginrc 
+
+#Credentials
+add user * william
+add password * william
+add method * ssh
+add autoenable * 1
+
+#Force rancid to check device config 
+/usr/local/rancid/bin/rancid-run 
+
+#Rancid Error Logs 
+/usr/local/rancid/var/logs/ 
+
+#Automation 
+crontab -e
+0 * * * * /usr/local/rancid/bin/rancid-run /* Hourly
+0 0 * * * /usr/local/rancid/bin/rancid-run /* Daily
+0 0 * * 0 /usr/local/rancid/bin/rancid-run /* Weekly
+0 0 1 * * /usr/local/rancid/bin/rancid-run /* Monthly
+0 0 1 1 * /usr/local/rancid/bin/rancid-run /* Year
+
+#Test cerds 
+/usr/local/rancid/bin/clogin -f /home/rancid/.cloginrc myrouter 
+
+#Setup mail server 
+vi /usr/local/rancid/bin/control_rancid
+
+SENDMAIL=${SENDMAIL:=/sbin/sendmail};
+postconf -e 'relayhost = smtp-relay.sendinblue.com:587'
+relayhost = [smtp-relay.XXXXX.com]:587
+
+smtp-relay.XXXXX.com XXXXX@XXXXX.com:XXXXXX
+vi /etc/postfix/sasl_passwd
+postmap /etc/postfix/sasl_passwd
+
+chown root:root /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.db
+chmod 0600 /etc/postfix/sasl_passwd /etc/postfix/sasl_passwd.db
+
+#Outbound relay settings
+/etc/postfix/main.cf 
+
+relayhost = smtp-relay.XXXXX.com:587
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+smtp_tls_security_level = may
+header_size_limit = 4096000
+
+#Adding aliases
+vi /etc/aliases 
+
+rancid-Switches:        XXXXX@XXXXX.com
+rancid-admin-Switches:  XXXXX@XXXXX.com
+
+newaliases
+systemctl enable postfix && systemctl start postfix
+
+#Sending Test Emails
+echo "Test Postfix system" | sendmail -v "Postfix Email setup" XXXXX@XXXXX.com 
+echo "this is a test email." | mailx -r william@pacificloud.net -s hello XXXXX@XXXXX.com
+
+#Flush mailq
+postqueue -f
+
+#Cleaning Sendmail Configuration File
+grep -vE '^$|#' /etc/postfix/main.cf
+install this package: cyrus-sasl-plain
+
+#Logs
+/var/log/mail.log
